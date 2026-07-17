@@ -1,49 +1,58 @@
 FROM php:8.4-apache
 
 RUN apt-get update && apt-get install -y \
-    git unzip zip curl libzip-dev libonig-dev \
-    && docker-php-ext-install pdo pdo_mysql zip
+    git \
+    unzip \
+    zip \
+    curl \
+    libzip-dev \
+    libonig-dev \
+    libsqlite3-dev \
+    sqlite3 \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite zip
 
-# Install Node.js 22
+# Install Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# Apache
+RUN a2enmod rewrite
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
 WORKDIR /var/www/html
 
 COPY . .
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
+# Install PHP packages
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Install JS dependencies and build assets
+# Install frontend
 RUN npm install
 RUN npm run build
 
-# Create .env if missing
-RUN cp .env.example .env || true
+# Laravel folders
+RUN mkdir -p storage/framework/cache
+RUN mkdir -p storage/framework/sessions
+RUN mkdir -p storage/framework/views
+RUN mkdir -p storage/logs
 
-# Generate app key
-RUN php artisan key:generate --force || true
+# SQLite file
+RUN touch database/database.sqlite
 
-# Cache optimization
-RUN php artisan config:cache || true
-RUN php artisan route:cache || true
-RUN php artisan view:cache || true
+# Permissions
+RUN chown -R www-data:www-data storage bootstrap/cache database
+RUN chmod -R 775 storage bootstrap/cache database
 
-# Laravel public folder as Apache DocumentRoot
+# Public folder
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
-    /etc/apache2/sites-available/*.conf \
-    /etc/apache2/apache2.conf \
-    /etc/apache2/conf-available/*.conf
-
-RUN a2enmod rewrite
-
-RUN chown -R www-data:www-data storage bootstrap/cache
+/etc/apache2/sites-available/*.conf \
+/etc/apache2/apache2.conf \
+/etc/apache2/conf-available/*.conf
 
 EXPOSE 80
 
