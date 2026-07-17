@@ -15,13 +15,23 @@ WORKDIR /var/www/html
 
 COPY . .
 
+# Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
 
+# Install JS dependencies and build assets
 RUN npm install
 RUN npm run build
 
+# Create .env if missing
 RUN cp .env.example .env || true
-RUN php artisan key:generate || true
+
+# Generate app key
+RUN php artisan key:generate --force || true
+
+# Cache optimization
+RUN php artisan config:cache || true
+RUN php artisan route:cache || true
+RUN php artisan view:cache || true
 
 # Laravel public folder as Apache DocumentRoot
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
